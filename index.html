@@ -1,1 +1,572 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkyDemon GPX Generator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: oklch(15% 0 0);
+            --panel-bg: oklch(20% 0 0);
+            --accent-color: oklch(70% 0.15 200);
+            --text-color: oklch(90% 0 0);
+            --text-dim: oklch(70% 0 0);
+            --border-color: oklch(35% 0 0);
+            --success-color: #4caf50;
+            --error-color: #f44336;
+            --warning-color: #ff9800;
+            --font-main: 'JetBrains Mono', monospace;
+        }
 
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: var(--font-main);
+            font-size: 12px;
+            line-height: 1.4;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 {
+            font-size: 1.2rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        main {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 1.2fr 0.8fr;
+            overflow: hidden;
+        }
+
+        .stack {
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            padding: 1rem;
+        }
+
+        .aside {
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            padding: 1rem;
+            background-color: var(--panel-bg);
+        }
+
+        .card {
+            background: oklch(25% 0 0);
+            border: 1px solid var(--border-color);
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border-radius: 4px;
+        }
+
+        .btn {
+            background: var(--border-color);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            font-family: var(--font-main);
+            font-size: 10px;
+            text-transform: uppercase;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            background: var(--accent-color);
+            color: black;
+        }
+
+        .btn-primary {
+            background: var(--accent-color);
+            color: black;
+        }
+
+        textarea {
+            width: 100%;
+            background: black;
+            color: var(--accent-color);
+            border: 1px solid var(--border-color);
+            font-family: var(--font-main);
+            padding: 0.5rem;
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        input[type="text"] {
+            background: black;
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            padding: 0.4rem;
+            font-family: var(--font-main);
+            width: 100%;
+        }
+
+        .point-row {
+            display: grid;
+            grid-template-columns: 1.5fr 2fr 2fr auto auto;
+            gap: 0.5rem;
+            align-items: center;
+            padding: 0.5rem;
+            border-bottom: 1px solid var(--border-color);
+            background: rgba(255,255,255,0.02);
+        }
+
+        .symbol-picker {
+            position: relative;
+            cursor: pointer;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: black;
+            border: 1px solid var(--border-color);
+        }
+
+        .symbol-menu {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            z-index: 1000;
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 2px;
+            padding: 5px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            width: 180px;
+        }
+
+        .symbol-option {
+            padding: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid transparent;
+        }
+
+        .symbol-option:hover {
+            border-color: var(--accent-color);
+            background: rgba(255,255,255,0.1);
+        }
+
+        .coord-converted {
+            font-size: 10px;
+            color: var(--accent-color);
+        }
+
+        @media (max-width: 780px) and (orientation: portrait) {
+            main {
+                grid-template-columns: 1fr;
+                grid-template-rows: 1fr 1fr;
+            }
+            .stack {
+                border-right: none;
+                border-bottom: 1px solid var(--border-color);
+            }
+            .point-row {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        /* Utility classes */
+        .hidden { display: none; }
+        .flex { display: flex; }
+        .gap-1 { gap: 0.5rem; }
+        .mt-1 { margin-top: 1rem; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>SkyDemon GPX Tools</h1>
+        <div class="flex gap-1">
+            <button class="btn" id="infoBtn">Info</button>
+        </div>
+    </header>
+
+    <main>
+        <section class="stack">
+            <div class="flex" style="justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h2>Punti Waypoint</h2>
+                <button class="btn btn-primary" id="addPointBtn">+ Aggiungi Punto</button>
+            </div>
+            <div id="pointsContainer">
+                <!-- Points will be added here -->
+            </div>
+        </section>
+
+        <section class="aside">
+            <div class="card">
+                <h3>Importa CSV / Testo</h3>
+                <p style="color: var(--text-dim); margin-bottom: 0.5rem;">Formato: nome, coordinate</p>
+                <textarea id="csvInput" placeholder="Punto1, N45.45 E009.18&#10;Punto2, 44 30.0, 11 15.0"></textarea>
+                <div class="flex gap-1 mt-1">
+                    <button class="btn" id="importTextBtn">Importa Testo</button>
+                    <label class="btn" style="display: inline-block;">
+                        Carica File
+                        <input type="file" id="csvFile" class="hidden" accept=".csv,.txt">
+                    </label>
+                </div>
+            </div>
+
+            <div class="card mt-1">
+                <h3>Esportazione</h3>
+                <div class="flex gap-1 mt-1">
+                    <button class="btn btn-primary" id="downloadGpxBtn">Scarica XML</button>
+                    <button class="btn" id="copyGpxBtn">Copia GPX</button>
+                </div>
+                <button class="btn mt-1" style="width: 100%; border-color: var(--error-color); color: var(--error-color);" id="clearAllBtn">Svuota Tutto</button>
+            </div>
+        </section>
+    </main>
+
+    <div id="infoModal" class="hidden" style="position: fixed; inset: 0; background: rgba(0,0,0,0.8); align-items: center; justify-content: center; z-index: 100;">
+        <div class="card" style="max-width: 500px; margin: 1rem;">
+            <h3>Informazioni</h3>
+            <p>Questa webapp permette di generare file GPX compatibili con SkyDemon.</p>
+            <p>Supporta vari formati di coordinate e i 19 simboli standard.</p>
+            <button class="btn mt-1" id="closeInfoBtn">Chiudi</button>
+        </div>
+    </div>
+
+    <script>
+        const SYMBOLS = {
+            'Circle': `<svg viewBox="0 0 16 16" width="16" height="16"><circle cx="8" cy="8" r="6" fill="none" stroke="white" stroke-width="1.2"/><circle cx="8" cy="8" r="1.5" fill="white"/></svg>`,
+            'Square': `<svg viewBox="0 0 16 16" width="16" height="16"><rect x="3" y="3" width="10" height="10" fill="none" stroke="white" stroke-width="1.2"/><circle cx="8" cy="8" r="1.5" fill="white"/></svg>`,
+            'Diamond': `<svg viewBox="0 0 16 16" width="16" height="16"><path d="M 8 2 L 14 8 L 8 14 L 2 8 Z" fill="none" stroke="white" stroke-width="1.2"/><circle cx="8" cy="8" r="1.5" fill="white"/></svg>`,
+            'CrossHorizontal': `<svg viewBox="0 0 16 16" width="16" height="16"><path d="M 8 2 V 14 M 2 8 H 14" stroke="white" stroke-width="1.5"/></svg>`,
+            'CrossDiagonal': `<svg viewBox="0 0 16 16" width="16" height="16"><path d="M 4 4 L 12 12 M 12 4 L 4 12" stroke="white" stroke-width="1.5"/></svg>`,
+            'BlueDot': `<svg viewBox="0 0 16 16" width="16" height="16"><circle cx="8" cy="8" r="5" fill="#2962ff" stroke="white" stroke-width="0.5"/></svg>`,
+            'RedDot': `<svg viewBox="0 0 16 16" width="16" height="16"><circle cx="8" cy="8" r="5" fill="#d50000" stroke="white" stroke-width="0.5"/></svg>`,
+            'GreenDot': `<svg viewBox="0 0 16 16" width="16" height="16"><circle cx="8" cy="8" r="5" fill="#00c853" stroke="white" stroke-width="0.5"/></svg>`,
+            'WhiteDot': `<svg viewBox="0 0 16 16" width="16" height="16"><circle cx="8" cy="8" r="5" fill="#ffffff" stroke="white" stroke-width="0.5"/></svg>`,
+            'YellowDot': `<svg viewBox="0 0 16 16" width="16" height="16"><circle cx="8" cy="8" r="5" fill="#ffd600" stroke="white" stroke-width="0.5"/></svg>`,
+            'PurpleDot': `<svg viewBox="0 0 16 16" width="16" height="16"><circle cx="8" cy="8" r="5" fill="#aa00ff" stroke="white" stroke-width="0.5"/></svg>`,
+            'OrangeDot': `<svg viewBox="0 0 16 16" width="16" height="16"><circle cx="8" cy="8" r="5" fill="#ff6d00" stroke="white" stroke-width="0.5"/></svg>`,
+            'BlueFlag': `<svg viewBox="0 0 16 16" width="16" height="16"><path d="M 4 2 V 14 M 4 2 L 14 6 L 4 10" fill="#00b0ff" stroke="white" stroke-width="0.5"/></svg>`,
+            'RedFlag': `<svg viewBox="0 0 16 16" width="16" height="16"><path d="M 4 2 V 14 M 4 2 L 14 6 L 4 10" fill="#ff1744" stroke="white" stroke-width="0.5"/></svg>`,
+            'GreenFlag': `<svg viewBox="0 0 16 16" width="16" height="16"><path d="M 4 2 V 14 M 4 2 L 14 6 L 4 10" fill="#00e676" stroke="white" stroke-width="0.5"/></svg>`,
+            'WhiteFlag': `<svg viewBox="0 0 16 16" width="16" height="16"><path d="M 4 2 V 14 M 4 2 L 14 6 L 4 10" fill="#ffffff" stroke="white" stroke-width="0.5"/></svg>`,
+            'YellowFlag': `<svg viewBox="0 0 16 16" width="16" height="16"><path d="M 4 2 V 14 M 4 2 L 14 6 L 4 10" fill="#ffea00" stroke="white" stroke-width="0.5"/></svg>`,
+            'PurpleFlag': `<svg viewBox="0 0 16 16" width="16" height="16"><path d="M 4 2 V 14 M 4 2 L 14 6 L 4 10" fill="#d500f9" stroke="white" stroke-width="0.5"/></svg>`,
+            'OrangeFlag': `<svg viewBox="0 0 16 16" width="16" height="16"><path d="M 4 2 V 14 M 4 2 L 14 6 L 4 10" fill="#ff9100" stroke="white" stroke-width="0.5"/></svg>`
+        };
+
+        // Utility per le coordinate
+        function parseCoordinates(input) {
+            if (!input) return null;
+
+            // Rimuovi caratteri non necessari ma tieni segni, punti, virgole e spazi
+            const clean = input.toUpperCase().replace(/[°'"]/g, ' ').trim();
+
+            // Matcher per vari formati
+            // 1. Gradi Decimali (es. 45.1234 -12.3456 o N45.12 E12.34)
+            const ddMatch = clean.match(/([NS])?\s*([0-9.]+)\s*([EW])?\s*([0-9.]+)/);
+
+            // Proviamo a estrarre lat e lon
+            let lat, lon;
+
+            // Logica semplificata di parsing per coprire la maggior parte dei casi
+            const parts = clean.split(/[\s,]+/).filter(p => p.length > 0);
+
+            function parsePart(p) {
+                let hem = null;
+                if (p.startsWith('N') || p.endsWith('N')) { hem = 'N'; p = p.replace('N', ''); }
+                else if (p.startsWith('S') || p.endsWith('S')) { hem = 'S'; p = p.replace('S', ''); }
+                else if (p.startsWith('E') || p.endsWith('E')) { hem = 'E'; p = p.replace('E', ''); }
+                else if (p.startsWith('W') || p.endsWith('W')) { hem = 'W'; p = p.replace('W', ''); }
+                return { val: parseFloat(p), hem };
+            }
+
+            // Se abbiamo 2 o più parti, proviamo ad accoppiarle
+            // Questo è un approccio euristico
+            try {
+                // Cerchiamo di identificare latitudine e longitudine dai prefissi/suffissi
+                let latVal = null, lonVal = null;
+
+                // Regex più robusta per catturare coppie
+                const regex = /([NS])?\s*(\d+(?:\.\d+)?)(?:\s+(\d+(?:\.\d+)?))?(?:\s+(\d+(?:\.\d+)?))?\s*([NS])?[\s,]+([EW])?\s*(\d+(?:\.\d+)?)(?:\s+(\d+(?:\.\d+)?))?(?:\s+(\d+(?:\.\d+)?))?\s*([EW])?/i;
+                const match = clean.match(regex);
+
+                if (match) {
+                    const latHem = match[1] || match[5] || 'N';
+                    const latD = parseFloat(match[2]) || 0;
+                    const latM = parseFloat(match[3]) || 0;
+                    const latS = parseFloat(match[4]) || 0;
+                    lat = (latD + latM/60 + latS/3600) * (latHem === 'S' ? -1 : 1);
+
+                    const lonHem = match[6] || match[10] || 'E';
+                    const lonD = parseFloat(match[7]) || 0;
+                    const lonM = parseFloat(match[8]) || 0;
+                    const lonS = parseFloat(match[9]) || 0;
+                    lon = (lonD + lonM/60 + lonS/3600) * (lonHem === 'W' ? -1 : 1);
+                } else {
+                    // Fallback: prova a dividere a metà e parsare
+                    const mid = Math.floor(parts.length / 2);
+                    // Molto basico, andrebbe migliorato
+                    lat = parseFloat(parts[0]);
+                    lon = parseFloat(parts[mid] || parts[1]);
+                }
+            } catch (e) {
+                return null;
+            }
+
+            if (isNaN(lat) || isNaN(lon)) return null;
+            return { lat, lon };
+        }
+
+        function formatDisplay(coords) {
+            if (!coords) return "";
+            const { lat, lon } = coords;
+
+            const formatPart = (val, isLat) => {
+                const hem = isLat ? (val >= 0 ? 'N' : 'S') : (val >= 0 ? 'E' : 'W');
+                const absVal = Math.abs(val);
+                const d = Math.floor(absVal);
+                const m = ((absVal - d) * 60).toFixed(2);
+
+                const dStr = d.toString().padStart(isLat ? 2 : 3, '0');
+                const mStr = m.toString().padStart(5, '0'); // XX.XX
+
+                return `${hem}${dStr}° ${mStr}'`;
+            };
+
+            return `${formatPart(lat, true)} ${formatPart(lon, false)}`;
+        }
+
+        // UI Helpers
+        let points = [];
+
+        function renderPoints() {
+            const container = document.getElementById('pointsContainer');
+            container.innerHTML = '';
+
+            points.forEach((point, index) => {
+                const row = document.createElement('div');
+                row.className = 'point-row';
+
+                const nameInput = document.createElement('input');
+                nameInput.type = 'text';
+                nameInput.value = point.name;
+                nameInput.placeholder = 'Nome';
+                nameInput.oninput = (e) => { point.name = e.target.value.toUpperCase(); };
+
+                const coordInput = document.createElement('input');
+                coordInput.type = 'text';
+                coordInput.value = point.rawCoord;
+                coordInput.placeholder = 'Coordinate';
+                coordInput.oninput = (e) => {
+                    point.rawCoord = e.target.value;
+                    const parsed = parseCoordinates(point.rawCoord);
+                    point.coords = parsed;
+                    convDisplay.innerText = formatDisplay(parsed);
+                };
+
+                const convDisplay = document.createElement('div');
+                convDisplay.className = 'coord-converted';
+                convDisplay.innerText = formatDisplay(point.coords);
+
+                // Symbol Picker
+                const picker = document.createElement('div');
+                picker.className = 'symbol-picker';
+                picker.innerHTML = SYMBOLS[point.symbol] || SYMBOLS['Circle'];
+
+                const menu = document.createElement('div');
+                menu.className = 'symbol-menu hidden';
+
+                Object.keys(SYMBOLS).forEach(symKey => {
+                    const opt = document.createElement('div');
+                    opt.className = 'symbol-option';
+                    opt.innerHTML = SYMBOLS[symKey];
+                    opt.title = symKey;
+                    opt.onclick = (e) => {
+                        e.stopPropagation();
+                        point.symbol = symKey;
+                        picker.innerHTML = SYMBOLS[symKey];
+                        menu.classList.add('hidden');
+                    };
+                    menu.appendChild(opt);
+                });
+
+                picker.onclick = (e) => {
+                    e.stopPropagation();
+                    const wasHidden = menu.classList.contains('hidden');
+                    document.querySelectorAll('.symbol-menu').forEach(m => m.classList.add('hidden'));
+                    if (wasHidden) menu.classList.remove('hidden');
+                };
+
+                picker.appendChild(menu);
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn';
+                deleteBtn.style.color = 'var(--error-color)';
+                deleteBtn.innerText = '✕';
+                deleteBtn.onclick = () => {
+                    points.splice(index, 1);
+                    renderPoints();
+                };
+
+                row.appendChild(nameInput);
+                row.appendChild(coordInput);
+                row.appendChild(convDisplay);
+                row.appendChild(picker);
+                row.appendChild(deleteBtn);
+
+                container.appendChild(row);
+            });
+        }
+
+        document.getElementById('addPointBtn').onclick = () => {
+            points.push({ name: '', rawCoord: '', coords: null, symbol: 'Circle' });
+            renderPoints();
+        };
+
+        document.getElementById('clearAllBtn').onclick = () => {
+            if (confirm('Sei sicuro di voler cancellare tutti i punti?')) {
+                points = [];
+                renderPoints();
+            }
+        };
+
+        // Logic for Import
+        function importData(text) {
+            if (!text) return;
+            const lines = text.split('\n');
+            lines.forEach(line => {
+                if (!line.trim()) return;
+
+                // Cerca di separare nome e coordinate
+                // Supporta sia "Nome, Coordinate" che "Nome Coordinate"
+                let name = '';
+                let coordPart = '';
+
+                const firstComma = line.indexOf(',');
+                if (firstComma !== -1) {
+                    name = line.substring(0, firstComma).trim();
+                    coordPart = line.substring(firstComma + 1).trim();
+                } else {
+                    // Se non c'è virgola, proviamo a prendere la prima parola come nome
+                    const firstSpace = line.trim().indexOf(' ');
+                    if (firstSpace !== -1) {
+                        name = line.trim().substring(0, firstSpace);
+                        coordPart = line.trim().substring(firstSpace + 1);
+                    } else {
+                        coordPart = line.trim();
+                    }
+                }
+
+                const parsed = parseCoordinates(coordPart);
+                points.push({
+                    name: name.toUpperCase() || 'PUNTO',
+                    rawCoord: coordPart,
+                    coords: parsed,
+                    symbol: 'Circle'
+                });
+            });
+            renderPoints();
+            document.getElementById('csvInput').value = '';
+        }
+
+        document.getElementById('importTextBtn').onclick = () => {
+            importData(document.getElementById('csvInput').value);
+        };
+
+        document.getElementById('csvFile').onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => importData(e.target.result);
+            reader.readAsText(file);
+            e.target.value = ''; // Reset input
+        };
+
+        // GPX Generation
+        function generateGPX() {
+            let xml = `<?xml version='1.0' encoding='utf-8'?>\n`;
+            xml += `<gpx xmlns="http://www.topografix.com/GPX/1/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd" version="1.1" creator="SkyDemon">\n`;
+
+            points.forEach(p => {
+                if (p.coords) {
+                    xml += `  <wpt lat="${p.coords.lat.toFixed(8)}" lon="${p.coords.lon.toFixed(8)}">\n`;
+                    xml += `    <name>${p.name || 'UNNAMED'}</name>\n`;
+                    xml += `    <sym>${p.symbol}</sym>\n`;
+                    xml += `    <extensions><identifier /><category /></extensions>\n`;
+                    xml += `  </wpt>\n`;
+                }
+            });
+
+            xml += `</gpx>`;
+            return xml;
+        }
+
+        document.getElementById('downloadGpxBtn').onclick = () => {
+            if (points.filter(p => p.coords).length === 0) {
+                alert('Nessun punto valido da esportare.');
+                return;
+            }
+            const gpx = generateGPX();
+            const blob = new Blob([gpx], { type: 'application/gpx+xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'waypoints.gpx';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        };
+
+        document.getElementById('copyGpxBtn').onclick = () => {
+            const gpx = generateGPX();
+            navigator.clipboard.writeText(gpx).then(() => {
+                const originalText = document.getElementById('copyGpxBtn').innerText;
+                document.getElementById('copyGpxBtn').innerText = 'Copiato!';
+                setTimeout(() => {
+                    document.getElementById('copyGpxBtn').innerText = originalText;
+                }, 2000);
+            });
+        };
+
+        // Close symbol menu when clicking outside
+        document.addEventListener('click', () => {
+            document.querySelectorAll('.symbol-menu').forEach(m => m.classList.add('hidden'));
+        });
+
+        document.getElementById('infoBtn').onclick = () => {
+            const modal = document.getElementById('infoModal');
+            modal.classList.remove('hidden');
+            modal.style.display = 'flex';
+        };
+        document.getElementById('closeInfoBtn').onclick = () => {
+            const modal = document.getElementById('infoModal');
+            modal.classList.add('hidden');
+            modal.style.display = 'none';
+        };
+    </script>
+</body>
+</html>
