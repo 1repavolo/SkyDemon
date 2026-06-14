@@ -31,7 +31,7 @@
             background-color: var(--bg-color);
             color: var(--text-color);
             font-family: var(--font-main);
-            font-size: 12px;
+            font-size: 13px;
             line-height: 1.4;
             height: 100dvh;
             display: flex;
@@ -90,7 +90,7 @@
             padding: 0.5rem 1rem;
             cursor: pointer;
             font-family: var(--font-main);
-            font-size: 10px;
+            font-size: 11px;
             text-transform: uppercase;
             transition: all 0.2s;
         }
@@ -176,8 +176,9 @@
         }
 
         .coord-converted {
-            font-size: 10px;
+            font-size: 15px;
             color: var(--accent-color);
+            font-weight: bold;
         }
 
         @media (max-width: 780px) and (orientation: portrait) {
@@ -211,8 +212,14 @@
 
     <main>
         <section class="stack">
-            <div class="flex" style="justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <h2>Punti Waypoint</h2>
+            <div class="flex" style="justify-content: space-between; align-items: center; margin-bottom: 1rem; gap: 10px;">
+                <div class="flex gap-1" style="align-items: center;">
+                    <h2>Punti Waypoint</h2>
+                    <div id="globalSymbolPicker" class="symbol-picker" title="Cambia tutti i simboli">
+                        <div id="globalSymbolIcon"><svg viewBox="0 0 16 16" width="16" height="16"><circle cx="8" cy="8" r="6" fill="none" stroke="white" stroke-width="1.2"/><circle cx="8" cy="8" r="1.5" fill="white"/></svg></div>
+                        <div class="symbol-menu hidden" id="globalSymbolMenu"></div>
+                    </div>
+                </div>
                 <button class="btn btn-primary" id="addPointBtn">+ Aggiungi Punto</button>
             </div>
             <div id="pointsContainer">
@@ -224,14 +231,22 @@
             <div class="card">
                 <h3>Importa CSV / Testo</h3>
                 <p style="color: var(--text-dim); margin-bottom: 0.5rem;">Formato: nome, coordinate</p>
-                <textarea id="csvInput" placeholder="Punto1, N45.45 E009.18&#10;Punto2, 44 30.0, 11 15.0"></textarea>
+                <textarea id="csvInput" placeholder="Punto1, N41° 43.19' E012° 18.55'&#10;Punto2, 44 30.0, 11 15.0"></textarea>
                 <div class="flex gap-1 mt-1">
-                    <button class="btn" id="importTextBtn">Importa Testo</button>
+                    <button class="btn" id="importTextBtn">Importa</button>
+                    <button class="btn" id="clearCsvBtn" style="border-color: var(--warning-color); color: var(--warning-color);">Pulisci</button>
                     <label class="btn" style="display: inline-block;">
-                        Carica File
+                        Carica
                         <input type="file" id="csvFile" class="hidden" accept=".csv,.txt">
                     </label>
                 </div>
+            </div>
+
+            <div class="card mt-1">
+                <h3>Prompt per IA</h3>
+                <p style="color: var(--text-dim); font-size: 11px; margin-bottom: 0.5rem;">Copia questo prompt per estrarre waypoint da foto o testi usando un'IA (ChatGPT/Claude).</p>
+                <textarea id="aiPromptText" readonly style="min-height: 80px; font-size: 11px;">Agisci come un esperto di navigazione aerea. Ti fornirò degli screenshot o dei testi relativi a waypoint terrestri. Il tuo obiettivo è estrarre o ricercare le coordinate GPS precise per ciascun punto. Restituisci l'output ESCLUSIVAMENTE in formato CSV, con una riga per ogni punto, seguendo questo schema: NOME_PUNTO, NXX° XX.XX' EXXX° XX.XX'. Assicurati che i gradi della latitudine abbiano 2 cifre e quelli della longitudine ne abbiano 3. I minuti devono avere sempre 2 decimali.</textarea>
+                <button class="btn btn-primary mt-1" style="width: 100%;" id="copyPromptBtn">Copia Prompt</button>
             </div>
 
             <div class="card mt-1">
@@ -284,53 +299,71 @@
             // Rimuovi caratteri non necessari ma tieni segni, punti, virgole e spazi
             const clean = input.toUpperCase().replace(/[°'"]/g, ' ').trim();
 
-            // Matcher per vari formati
-            // 1. Gradi Decimali (es. 45.1234 -12.3456 o N45.12 E12.34)
-            const ddMatch = clean.match(/([NS])?\s*([0-9.]+)\s*([EW])?\s*([0-9.]+)/);
-
-            // Proviamo a estrarre lat e lon
             let lat, lon;
 
-            // Logica semplificata di parsing per coprire la maggior parte dei casi
-            const parts = clean.split(/[\s,]+/).filter(p => p.length > 0);
-
-            function parsePart(p) {
-                let hem = null;
-                if (p.startsWith('N') || p.endsWith('N')) { hem = 'N'; p = p.replace('N', ''); }
-                else if (p.startsWith('S') || p.endsWith('S')) { hem = 'S'; p = p.replace('S', ''); }
-                else if (p.startsWith('E') || p.endsWith('E')) { hem = 'E'; p = p.replace('E', ''); }
-                else if (p.startsWith('W') || p.endsWith('W')) { hem = 'W'; p = p.replace('W', ''); }
-                return { val: parseFloat(p), hem };
+            function smartParse(valStr, isLat) {
+                let v = parseFloat(valStr);
+                // Se il valore è > 90 (lat) o > 180 (lon), ed è un numero lungo senza spazi,
+                // probabilmente è in formato DDMM.mm o DDDMM.mm
+                if ((isLat && Math.abs(v) > 90) || (!isLat && Math.abs(v) > 180)) {
+                    let s = valStr.trim();
+                    let dLen = isLat ? 2 : 3;
+                    if (s.length <= dLen) return v;
+                    let d = parseFloat(s.substring(0, dLen));
+                    let m = parseFloat(s.substring(dLen));
+                    return d + m/60;
+                }
+                return v;
             }
 
-            // Se abbiamo 2 o più parti, proviamo ad accoppiarle
-            // Questo è un approccio euristico
             try {
-                // Cerchiamo di identificare latitudine e longitudine dai prefissi/suffissi
-                let latVal = null, lonVal = null;
-
-                // Regex più robusta per catturare coppie
-                const regex = /([NS])?\s*(\d+(?:\.\d+)?)(?:\s+(\d+(?:\.\d+)?))?(?:\s+(\d+(?:\.\d+)?))?\s*([NS])?[\s,]+([EW])?\s*(\d+(?:\.\d+)?)(?:\s+(\d+(?:\.\d+)?))?(?:\s+(\d+(?:\.\d+)?))?\s*([EW])?/i;
+                // Cerchiamo di identificare latitudine e longitudine dai prefissi/suffissi N/S/E/W
+                const regex = /([NS])\s*(\d+(?:\.\d+)?)(?:\s+(\d+(?:\.\d+)?))?(?:\s+(\d+(?:\.\d+)?))?\s*([EW])\s*(\d+(?:\.\d+)?)(?:\s+(\d+(?:\.\d+)?))?(?:\s+(\d+(?:\.\d+)?))?/i;
                 const match = clean.match(regex);
 
                 if (match) {
-                    const latHem = match[1] || match[5] || 'N';
-                    const latD = parseFloat(match[2]) || 0;
-                    const latM = parseFloat(match[3]) || 0;
-                    const latS = parseFloat(match[4]) || 0;
+                    const latHem = match[1];
+                    let latD, latM, latS;
+                    if (match[3]) {
+                        latD = parseFloat(match[2]);
+                        latM = parseFloat(match[3]) || 0;
+                        latS = parseFloat(match[4]) || 0;
+                    } else {
+                        latD = smartParse(match[2], true);
+                        latM = 0;
+                        latS = 0;
+                    }
                     lat = (latD + latM/60 + latS/3600) * (latHem === 'S' ? -1 : 1);
 
-                    const lonHem = match[6] || match[10] || 'E';
-                    const lonD = parseFloat(match[7]) || 0;
-                    const lonM = parseFloat(match[8]) || 0;
-                    const lonS = parseFloat(match[9]) || 0;
+                    const lonHem = match[5];
+                    let lonD, lonM, lonS;
+                    if (match[7]) {
+                        lonD = parseFloat(match[6]);
+                        lonM = parseFloat(match[7]) || 0;
+                        lonS = parseFloat(match[8]) || 0;
+                    } else {
+                        lonD = smartParse(match[6], false);
+                        lonM = 0;
+                        lonS = 0;
+                    }
                     lon = (lonD + lonM/60 + lonS/3600) * (lonHem === 'W' ? -1 : 1);
                 } else {
-                    // Fallback: prova a dividere a metà e parsare
-                    const mid = Math.floor(parts.length / 2);
-                    // Molto basico, andrebbe migliorato
-                    lat = parseFloat(parts[0]);
-                    lon = parseFloat(parts[mid] || parts[1]);
+                    // Fallback se non ci sono N/E iniziali
+                    const fallbackRegex = /([NS])?\s*(\d+(?:\.\d+)?)(?:\s+(\d+(?:\.\d+)?))?(?:\s+(\d+(?:\.\d+)?))?\s*([NS])?[\s,]+([EW])?\s*(\d+(?:\.\d+)?)(?:\s+(\d+(?:\.\d+)?))?(?:\s+(\d+(?:\.\d+)?))?\s*([EW])?/i;
+                    const fMatch = clean.match(fallbackRegex);
+                    if (fMatch) {
+                        const latHem = fMatch[1] || fMatch[5] || 'N';
+                        const latD = parseFloat(fMatch[2]) || 0;
+                        const latM = parseFloat(fMatch[3]) || 0;
+                        const latS = parseFloat(fMatch[4]) || 0;
+                        lat = (latD + latM/60 + latS/3600) * (latHem === 'S' ? -1 : 1);
+
+                        const lonHem = fMatch[6] || fMatch[10] || 'E';
+                        const lonD = parseFloat(fMatch[7]) || 0;
+                        const lonM = parseFloat(fMatch[8]) || 0;
+                        const lonS = parseFloat(fMatch[9]) || 0;
+                        lon = (lonD + lonM/60 + lonS/3600) * (lonHem === 'W' ? -1 : 1);
+                    }
                 }
             } catch (e) {
                 return null;
@@ -394,7 +427,9 @@
                 // Symbol Picker
                 const picker = document.createElement('div');
                 picker.className = 'symbol-picker';
-                picker.innerHTML = SYMBOLS[point.symbol] || SYMBOLS['Circle'];
+                const currentSymIcon = document.createElement('div');
+                currentSymIcon.innerHTML = SYMBOLS[point.symbol] || SYMBOLS['Circle'];
+                picker.appendChild(currentSymIcon);
 
                 const menu = document.createElement('div');
                 menu.className = 'symbol-menu hidden';
@@ -407,7 +442,7 @@
                     opt.onclick = (e) => {
                         e.stopPropagation();
                         point.symbol = symKey;
-                        picker.innerHTML = SYMBOLS[symKey];
+                        currentSymIcon.innerHTML = SYMBOLS[symKey];
                         menu.classList.add('hidden');
                     };
                     menu.appendChild(opt);
@@ -495,6 +530,47 @@
         document.getElementById('importTextBtn').onclick = () => {
             importData(document.getElementById('csvInput').value);
         };
+
+        document.getElementById('clearCsvBtn').onclick = () => {
+            document.getElementById('csvInput').value = '';
+        };
+
+        document.getElementById('copyPromptBtn').onclick = () => {
+            const promptText = document.getElementById('aiPromptText').value;
+            navigator.clipboard.writeText(promptText).then(() => {
+                const btn = document.getElementById('copyPromptBtn');
+                const originalText = btn.innerText;
+                btn.innerText = 'Copiato!';
+                setTimeout(() => { btn.innerText = originalText; }, 2000);
+            });
+        };
+
+        // Inizializza Global Symbol Menu
+        function initGlobalSymbolMenu() {
+            const menu = document.getElementById('globalSymbolMenu');
+            Object.keys(SYMBOLS).forEach(symKey => {
+                const opt = document.createElement('div');
+                opt.className = 'symbol-option';
+                opt.innerHTML = SYMBOLS[symKey];
+                opt.title = symKey;
+                opt.onclick = (e) => {
+                    e.stopPropagation();
+                    points.forEach(p => p.symbol = symKey);
+                    renderPoints();
+                    menu.classList.add('hidden');
+                    document.getElementById('globalSymbolIcon').innerHTML = SYMBOLS[symKey];
+                };
+                menu.appendChild(opt);
+            });
+
+            document.getElementById('globalSymbolPicker').onclick = (e) => {
+                e.stopPropagation();
+                const wasHidden = menu.classList.contains('hidden');
+                document.querySelectorAll('.symbol-menu').forEach(m => m.classList.add('hidden'));
+                if (wasHidden) menu.classList.remove('hidden');
+            };
+        }
+        initGlobalSymbolMenu();
 
         document.getElementById('csvFile').onchange = (e) => {
             const file = e.target.files[0];
