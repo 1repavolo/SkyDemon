@@ -182,13 +182,32 @@
         }
 
         @media (max-width: 780px) and (orientation: portrait) {
+            body {
+                height: auto;
+                min-height: 100dvh;
+            }
             main {
                 grid-template-columns: 1fr;
-                grid-template-rows: 1fr 1fr;
+                grid-template-rows: auto auto;
+                overflow: visible;
             }
             .stack {
+                grid-row: 2;
                 border-right: none;
-                border-bottom: 1px solid var(--border-color);
+                border-top: 1px solid var(--border-color);
+                overflow: visible;
+                height: auto;
+            }
+            .aside {
+                grid-row: 1;
+                overflow: visible;
+                height: auto;
+            }
+            textarea {
+                min-height: 200px;
+            }
+            #aiPromptText {
+                min-height: 150px;
             }
             .point-row {
                 grid-template-columns: 1fr 1fr;
